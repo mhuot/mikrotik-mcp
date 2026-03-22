@@ -429,5 +429,66 @@ def get_capsman_registrations() -> str:
         raise
 
 
+# ---------------------------------------------------------------------------
+# IPsec VPN
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_ipsec_peers() -> str:
+    """List all IPsec peers with remote address, IKE version, profile, and enabled state."""
+    result = _rest_get("/ip/ipsec/peer")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ipsec_active_peers() -> str:
+    """List currently established IPsec peer connections with uptime and SA counts."""
+    result = _rest_get("/ip/ipsec/active-peers")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ipsec_policies() -> str:
+    """List all IPsec policies (traffic selectors) with src/dst, peer, action, and phase2 state."""
+    result = _rest_get("/ip/ipsec/policy")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ipsec_profiles() -> str:
+    """List IPsec Phase 1 profiles (IKE proposals): encryption, hash, DH group, lifetime."""
+    result = _rest_get("/ip/ipsec/profile")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ipsec_proposals() -> str:
+    """List IPsec Phase 2 proposals: encryption, auth algorithms, PFS group, lifetime."""
+    result = _rest_get("/ip/ipsec/proposal")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ipsec_identities() -> str:
+    """List IPsec identities: auth method, peer binding, policy generation."""
+    result = _rest_get("/ip/ipsec/identity")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ipsec_installed_sa() -> str:
+    """List installed IPsec Security Associations with SPI, state, encryption, and traffic stats."""
+    result = _rest_get("/ip/ipsec/installed-sa")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ipsec_statistics() -> str:
+    """Get global IPsec statistics: packet counts, errors, and failures."""
+    result = _rest_get("/ip/ipsec/statistics")
+    return json.dumps(result, indent=2)
+
+
 if __name__ == "__main__":
     mcp.run()

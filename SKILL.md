@@ -18,7 +18,7 @@ metadata:
 | **Protocol**   | RouterOS REST API (HTTPS)            |
 | **RouterOS**   | v7.0+ required                       |
 
-## Available Tools (32 tools)
+## Available Tools (40 tools)
 
 ### Device Information
 1. **get_identity** — Get device hostname
@@ -74,6 +74,16 @@ metadata:
 31. **get_capsman_interfaces** — CAPsMAN managed wireless interfaces
 32. **get_capsman_registrations** — Clients registered via CAPsMAN
 
+### IPsec VPN
+33. **get_ipsec_peers** — All IPsec peers with remote address, IKE version, profile
+34. **get_ipsec_active_peers** — Currently established IPsec peer connections
+35. **get_ipsec_policies** — IPsec policies (traffic selectors) with phase2 state
+36. **get_ipsec_profiles** — Phase 1 profiles: encryption, hash, DH group, lifetime
+37. **get_ipsec_proposals** — Phase 2 proposals: encryption, auth, PFS, lifetime
+38. **get_ipsec_identities** — Auth method, peer binding, policy generation
+39. **get_ipsec_installed_sa** — Installed Security Associations with SPI and state
+40. **get_ipsec_statistics** — Global IPsec packet counts, errors, and failures
+
 ## Blocked Commands
 
 The following operations are NOT supported via this MCP server for safety:
@@ -116,6 +126,18 @@ Check DHCP pool config, current leases, and ARP entries.
 get_wireless_interfaces → get_wireless_registrations → get_capsman_registrations
 ```
 Review wireless config and connected clients (standalone or CAPsMAN).
+
+### 6. IPsec VPN Troubleshooting
+```
+get_ipsec_peers → get_ipsec_active_peers → get_ipsec_installed_sa → get_ipsec_statistics
+```
+Check peer config, verify tunnels are established, review SA state, and inspect error counters.
+
+### 7. IPsec VPN Audit
+```
+get_ipsec_profiles → get_ipsec_proposals → get_ipsec_identities → get_ipsec_policies
+```
+Review Phase 1/Phase 2 crypto settings, authentication config, and traffic selectors.
 
 ## Integration with Other NetClaw Skills
 
