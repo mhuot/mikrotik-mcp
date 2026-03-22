@@ -490,5 +490,409 @@ def get_ipsec_statistics() -> str:
     return json.dumps(result, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Neighbor Discovery (LLDP/CDP equivalent)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_neighbors() -> str:
+    """List discovered neighbors (LLDP/CDP/MNDP) with identity, IP, interface, platform."""
+    result = _rest_get("/ip/neighbor")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Spanning Tree (Bridge STP)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_bridge_config() -> str:
+    """List bridge interfaces with STP settings, priority, and protocol mode."""
+    result = _rest_get("/interface/bridge")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_bridge_hosts() -> str:
+    """Get bridge MAC address table (FDB) with learned MACs per port."""
+    result = _rest_get("/interface/bridge/host")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# SNMP
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_snmp_config() -> str:
+    """Get SNMP service configuration: contact, location, engine-id, enabled state."""
+    result = _rest_get("/snmp")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_snmp_communities() -> str:
+    """List SNMP community strings with access rights and address restrictions."""
+    result = _rest_get("/snmp/community")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Connection Tracking (Active Sessions)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_firewall_connections(limit: int = 100) -> str:
+    """List active connection tracking entries (like 'show conn' on ASA). Returns last N entries."""
+    result = _rest_get("/ip/firewall/connection")
+    return json.dumps(result[-limit:], indent=2)
+
+
+@mcp.tool()
+def get_connection_tracking_config() -> str:
+    """Get connection tracking settings: enabled, max entries, timeouts."""
+    result = _rest_get("/ip/firewall/connection/tracking")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# QoS / Queues
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_simple_queues() -> str:
+    """List simple queues with target, max-limit, burst, and traffic counters."""
+    result = _rest_get("/queue/simple")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_queue_tree() -> str:
+    """List queue tree entries with parent, priority, and rate limits."""
+    result = _rest_get("/queue/tree")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_queue_types() -> str:
+    """List available queue disciplines (SFQ, PCQ, RED, etc.)."""
+    result = _rest_get("/queue/type")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Bonding / LACP (Link Aggregation)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_bonding_interfaces() -> str:
+    """List bonding (LACP/balance) interfaces with mode, slaves, and link monitoring."""
+    try:
+        result = _rest_get("/interface/bonding")
+        return json.dumps(result, indent=2)
+    except requests.exceptions.HTTPError as exc:
+        if exc.response.status_code == 404:
+            return json.dumps({"error": "No bonding interfaces configured"})
+        raise
+
+
+# ---------------------------------------------------------------------------
+# System Health & Environment
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_system_health() -> str:
+    """Get hardware health: temperature, voltage, fan speed, PSU status."""
+    try:
+        result = _rest_get("/system/health")
+        return json.dumps(result, indent=2)
+    except requests.exceptions.HTTPError as exc:
+        if exc.response.status_code == 404:
+            return json.dumps(
+                {"error": "Health monitoring not available on this model"}
+            )
+        raise
+
+
+@mcp.tool()
+def get_system_clock() -> str:
+    """Get system clock settings: date, time, timezone."""
+    result = _rest_get("/system/clock")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_system_packages() -> str:
+    """List installed packages with version and enabled state."""
+    result = _rest_get("/system/package")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_system_scheduler() -> str:
+    """List scheduled tasks/scripts with interval, next run, and policy."""
+    result = _rest_get("/system/scheduler")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_system_scripts() -> str:
+    """List all system scripts with source, policy, and last run status."""
+    result = _rest_get("/system/script")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Certificates
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_certificates() -> str:
+    """List installed certificates with subject, issuer, expiry, and key details."""
+    result = _rest_get("/certificate")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# IP Pool
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_ip_pools() -> str:
+    """List IP address pools with ranges (used by DHCP, VPN, HotSpot)."""
+    result = _rest_get("/ip/pool")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ip_pool_used(pool_name: str) -> str:
+    """List addresses currently in use from a specific IP pool."""
+    result = _rest_get("/ip/pool/used")
+    filtered = [e for e in result if e.get("pool") == pool_name]
+    return json.dumps(filtered, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# PPP / VPN Sessions (L2TP, SSTP, PPTP, OpenVPN)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_ppp_active_sessions() -> str:
+    """List active PPP sessions (L2TP, SSTP, PPTP, OpenVPN) with user, IP, uptime."""
+    result = _rest_get("/ppp/active")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ppp_secrets() -> str:
+    """List PPP user accounts with service type, profile, and local/remote address."""
+    result = _rest_get("/ppp/secret")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ppp_profiles() -> str:
+    """List PPP profiles with DNS, rate-limit, address pool assignments."""
+    result = _rest_get("/ppp/profile")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_l2tp_server_config() -> str:
+    """Get L2TP server configuration and enabled state."""
+    result = _rest_get("/interface/l2tp-server/server")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_sstp_server_config() -> str:
+    """Get SSTP server configuration: port, certificate, auth methods."""
+    result = _rest_get("/interface/sstp-server/server")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Routing Protocol Detail (OSPF/BGP deep dive)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_ospf_instances() -> str:
+    """List OSPF instances with router-id, VRF, and redistribution config."""
+    result = _rest_get("/routing/ospf/instance")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ospf_areas() -> str:
+    """List OSPF areas with type (backbone, stub, NSSA) and area-id."""
+    result = _rest_get("/routing/ospf/area")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_ospf_lsa() -> str:
+    """Get OSPF link-state database (LSDB) with LSA types and advertising routers."""
+    result = _rest_get("/routing/ospf/lsa")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_bgp_sessions() -> str:
+    """List active BGP sessions with state, remote AS, prefixes, and uptime."""
+    result = _rest_get("/routing/bgp/session")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_bgp_advertisements() -> str:
+    """List BGP advertised routes with prefix, next-hop, and path attributes."""
+    result = _rest_get("/routing/bgp/advertisement")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_routing_rules() -> str:
+    """List policy routing rules (routing table selection based on src/dst/mark)."""
+    result = _rest_get("/routing/rule")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_routing_filters() -> str:
+    """List routing filter rules used for route redistribution and filtering."""
+    result = _rest_get("/routing/filter/rule")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Network Diagnostics (extended)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def run_traceroute(address: str) -> str:
+    """Run traceroute to a target address."""
+    try:
+        result = _rest_post("/tool/traceroute", {"address": address})
+        return json.dumps(result, indent=2)
+    except requests.exceptions.HTTPError:
+        return json.dumps(
+            {
+                "info": "Traceroute via REST may not be supported. "
+                "Use SSH/CLI for interactive traceroute."
+            }
+        )
+
+
+@mcp.tool()
+def get_dns_cache() -> str:
+    """List cached DNS entries with TTL and resolved addresses."""
+    result = _rest_get("/ip/dns/cache")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_dns_static() -> str:
+    """List static DNS entries configured on the device."""
+    result = _rest_get("/ip/dns/static")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# MPLS
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_mpls_forwarding_table() -> str:
+    """Get MPLS forwarding table with label, next-hop, and interface."""
+    try:
+        result = _rest_get("/mpls/forwarding-table")
+        return json.dumps(result, indent=2)
+    except requests.exceptions.HTTPError as exc:
+        if exc.response.status_code == 404:
+            return json.dumps({"error": "MPLS not configured or not available"})
+        raise
+
+
+@mcp.tool()
+def get_mpls_ldp_neighbors() -> str:
+    """List MPLS LDP neighbors with transport address and session state."""
+    try:
+        result = _rest_get("/mpls/ldp/neighbor")
+        return json.dumps(result, indent=2)
+    except requests.exceptions.HTTPError as exc:
+        if exc.response.status_code == 404:
+            return json.dumps({"error": "MPLS LDP not configured"})
+        raise
+
+
+@mcp.tool()
+def get_mpls_ldp_interfaces() -> str:
+    """List interfaces participating in MPLS LDP."""
+    try:
+        result = _rest_get("/mpls/ldp/interface")
+        return json.dumps(result, indent=2)
+    except requests.exceptions.HTTPError as exc:
+        if exc.response.status_code == 404:
+            return json.dumps({"error": "MPLS LDP not configured"})
+        raise
+
+
+# ---------------------------------------------------------------------------
+# Static Routes & Route Management
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_static_routes() -> str:
+    """List all statically configured routes with gateway, distance, and scope."""
+    routes = _rest_get("/ip/route")
+    static = [r for r in routes if r.get("static", "") == "true"]
+    return json.dumps(static, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# DHCP Client
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_dhcp_client() -> str:
+    """List DHCP client instances with obtained address, gateway, and lease status."""
+    result = _rest_get("/ip/dhcp-client")
+    return json.dumps(result, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Firewall RAW & Layer7
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_firewall_raw() -> str:
+    """List raw firewall rules (prerouting/output, before connection tracking)."""
+    result = _rest_get("/ip/firewall/raw")
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def get_firewall_layer7_protocols() -> str:
+    """List Layer7 protocol definitions used for DPI-based firewall matching."""
+    result = _rest_get("/ip/firewall/layer7-protocol")
+    return json.dumps(result, indent=2)
+
+
 if __name__ == "__main__":
     mcp.run()
