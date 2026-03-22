@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pylint: disable=too-many-lines,too-many-arguments,too-many-positional-arguments
 """
 MikroTik RouterOS MCP Server
 
@@ -24,6 +25,7 @@ import json
 import os
 from typing import Optional
 
+import librouteros
 import requests
 import urllib3
 from dotenv import load_dotenv
@@ -64,10 +66,21 @@ def _rest_get(path: str, params: Optional[dict] = None) -> dict:
 
 
 def _rest_post(path: str, data: Optional[dict] = None) -> dict:
-    """Make a POST request to the RouterOS REST API."""
+    """Make a POST request to the RouterOS REST API (commands like ping, traceroute)."""
     base_url, user, password, verify_ssl = _get_connection_params()
     url = f"{base_url}{path}"
     resp = requests.post(
+        url, auth=(user, password), verify=verify_ssl, json=data, timeout=30
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _rest_put(path: str, data: Optional[dict] = None) -> dict:
+    """Make a PUT request to the RouterOS REST API (create/add items)."""
+    base_url, user, password, verify_ssl = _get_connection_params()
+    url = f"{base_url}{path}"
+    resp = requests.put(
         url, auth=(user, password), verify=verify_ssl, json=data, timeout=30
     )
     resp.raise_for_status()
@@ -94,6 +107,63 @@ def _rest_delete(path: str, item_id: str) -> dict:
     if resp.content:
         return resp.json()
     return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# RouterOS API helpers (librouteros) — used for write operations
+# ---------------------------------------------------------------------------
+
+
+def _get_api():
+    """Connect to the RouterOS API (port 8728) for write operations."""
+    host = os.environ.get("MIKROTIK_HOST", "192.168.88.1")
+    user = os.environ.get("MIKROTIK_USER", "admin")
+    password = os.environ.get("MIKROTIK_PASSWORD", "")
+    port = int(os.environ.get("MIKROTIK_API_PORT", "8728"))
+    return librouteros.connect(
+        host=host, username=user, password=password, port=port, timeout=30
+    )
+
+
+def _api_add(path: str, params: dict) -> dict:
+    """Add an item via RouterOS API. Returns the created item."""
+    api = _get_api()
+    try:
+        resource = api.path(path)
+        new_id = resource.add(**params)
+        # Fetch the created item to return its full details
+        for item in resource:
+            if item.get(".id") == new_id:
+                return dict(item)
+        return {".id": new_id, "status": "created"}
+    finally:
+        api.close()
+
+
+def _api_set(path: str, item_id: str, params: dict) -> dict:
+    """Update an item via RouterOS API."""
+    api = _get_api()
+    try:
+        resource = api.path(path)
+        resource.update(**{".id": item_id, **params})
+        # Fetch updated item
+        for item in resource:
+            if item.get(".id") == item_id:
+                return dict(item)
+        return {".id": item_id, "status": "updated"}
+    finally:
+        api.close()
+
+
+def _api_remove(path: str, item_id: str) -> dict:
+    """Remove an item via RouterOS API."""
+    api = _get_api()
+    try:
+        resource = api.path(path)
+        resource.remove(item_id)
+        return {".id": item_id, "status": "removed"}
+    finally:
+        api.close()
 
 
 # ---------------------------------------------------------------------------
@@ -891,6 +961,667 @@ def get_firewall_raw() -> str:
 def get_firewall_layer7_protocols() -> str:
     """List Layer7 protocol definitions used for DPI-based firewall matching."""
     result = _rest_get("/ip/firewall/layer7-protocol")
+    return json.dumps(result, indent=2)
+
+
+# ===========================================================================
+# WRITE OPERATIONS (CRUD) — via RouterOS API (librouteros, port 8728)
+# ===========================================================================
+
+
+def _build_params(**kwargs):
+    """Build a params dict from kwargs, skipping None values."""
+    return {k: v for k, v in kwargs.items() if v is not None}
+
+
+# ---------------------------------------------------------------------------
+# Firewall Filter CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def add_firewall_filter_rule(
+    chain: str,
+    action: str,
+    src_address: Optional[str] = None,
+    dst_address: Optional[str] = None,
+    protocol: Optional[str] = None,
+    dst_port: Optional[str] = None,
+    src_port: Optional[str] = None,
+    in_interface: Optional[str] = None,
+    out_interface: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Add a firewall filter rule. Chain: input/forward/output. Action: accept/drop/reject/log."""
+    params = _build_params(
+        chain=chain,
+        action=action,
+        **{"src-address": src_address, "dst-address": dst_address},
+        protocol=protocol,
+        **{"dst-port": dst_port, "src-port": src_port},
+        **{"in-interface": in_interface, "out-interface": out_interface},
+        comment=comment,
+    )
+    result = _api_add("/ip/firewall/filter", params)
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def update_firewall_filter_rule(
+    rule_id: str,
+    action: Optional[str] = None,
+    src_address: Optional[str] = None,
+    dst_address: Optional[str] = None,
+    protocol: Optional[str] = None,
+    dst_port: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update an existing firewall filter rule by its .id."""
+    params = _build_params(
+        action=action,
+        **{"src-address": src_address, "dst-address": dst_address},
+        protocol=protocol,
+        **{"dst-port": dst_port},
+        comment=comment,
+    )
+    result = _api_set("/ip/firewall/filter", rule_id, params)
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def remove_firewall_filter_rule(rule_id: str) -> str:
+    """Remove a firewall filter rule by its .id."""
+    return json.dumps(_api_remove("/ip/firewall/filter", rule_id), indent=2)
+
+
+@mcp.tool()
+def enable_firewall_filter_rule(rule_id: str) -> str:
+    """Enable a disabled firewall filter rule."""
+    return json.dumps(
+        _api_set("/ip/firewall/filter", rule_id, {"disabled": "false"}), indent=2
+    )
+
+
+@mcp.tool()
+def disable_firewall_filter_rule(rule_id: str) -> str:
+    """Disable a firewall filter rule without removing it."""
+    return json.dumps(
+        _api_set("/ip/firewall/filter", rule_id, {"disabled": "true"}), indent=2
+    )
+
+
+# ---------------------------------------------------------------------------
+# Firewall NAT CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def add_firewall_nat_rule(
+    chain: str,
+    action: str,
+    src_address: Optional[str] = None,
+    dst_address: Optional[str] = None,
+    protocol: Optional[str] = None,
+    dst_port: Optional[str] = None,
+    to_addresses: Optional[str] = None,
+    to_ports: Optional[str] = None,
+    out_interface: Optional[str] = None,
+    in_interface: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Add a NAT rule. Chain: srcnat/dstnat. Action: masquerade/dst-nat/src-nat/netmap."""
+    params = _build_params(
+        chain=chain,
+        action=action,
+        **{"src-address": src_address, "dst-address": dst_address},
+        protocol=protocol,
+        **{"dst-port": dst_port},
+        **{"to-addresses": to_addresses, "to-ports": to_ports},
+        **{"out-interface": out_interface, "in-interface": in_interface},
+        comment=comment,
+    )
+    result = _api_add("/ip/firewall/nat", params)
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def update_firewall_nat_rule(
+    rule_id: str,
+    action: Optional[str] = None,
+    to_addresses: Optional[str] = None,
+    to_ports: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update an existing NAT rule by its .id."""
+    params = _build_params(
+        action=action,
+        **{"to-addresses": to_addresses, "to-ports": to_ports},
+        comment=comment,
+    )
+    result = _api_set("/ip/firewall/nat", rule_id, params)
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+def remove_firewall_nat_rule(rule_id: str) -> str:
+    """Remove a NAT rule by its .id."""
+    return json.dumps(_api_remove("/ip/firewall/nat", rule_id), indent=2)
+
+
+@mcp.tool()
+def enable_firewall_nat_rule(rule_id: str) -> str:
+    """Enable a disabled NAT rule."""
+    return json.dumps(
+        _api_set("/ip/firewall/nat", rule_id, {"disabled": "false"}), indent=2
+    )
+
+
+@mcp.tool()
+def disable_firewall_nat_rule(rule_id: str) -> str:
+    """Disable a NAT rule without removing it."""
+    return json.dumps(
+        _api_set("/ip/firewall/nat", rule_id, {"disabled": "true"}), indent=2
+    )
+
+
+# ---------------------------------------------------------------------------
+# Firewall Address List CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def add_firewall_address_list_entry(
+    list_name: str,
+    address: str,
+    comment: Optional[str] = None,
+    timeout: Optional[str] = None,
+) -> str:
+    """Add an entry to a firewall address-list."""
+    params = _build_params(
+        list=list_name, address=address, comment=comment, timeout=timeout
+    )
+    return json.dumps(_api_add("/ip/firewall/address-list", params), indent=2)
+
+
+@mcp.tool()
+def remove_firewall_address_list_entry(entry_id: str) -> str:
+    """Remove an address-list entry by its .id."""
+    return json.dumps(_api_remove("/ip/firewall/address-list", entry_id), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# DNS CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def set_dns_servers(servers: str) -> str:
+    """Set DNS server addresses (comma-separated, e.g. '8.8.8.8,8.8.4.4')."""
+    api = _get_api()
+    try:
+        dns = api.path("/ip/dns")
+        dns.update(servers=servers)
+        for item in dns:
+            return json.dumps(dict(item), indent=2)
+        return json.dumps({"status": "dns servers updated"})
+    finally:
+        api.close()
+
+
+@mcp.tool()
+def add_dns_static_entry(
+    name: str,
+    address: str,
+    record_type: Optional[str] = None,
+    ttl: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Add a static DNS entry (A, AAAA, CNAME, etc.)."""
+    params = _build_params(
+        name=name, address=address, type=record_type, ttl=ttl, comment=comment
+    )
+    return json.dumps(_api_add("/ip/dns/static", params), indent=2)
+
+
+@mcp.tool()
+def update_dns_static_entry(
+    entry_id: str,
+    name: Optional[str] = None,
+    address: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update a static DNS entry by its .id."""
+    params = _build_params(name=name, address=address, comment=comment)
+    return json.dumps(_api_set("/ip/dns/static", entry_id, params), indent=2)
+
+
+@mcp.tool()
+def remove_dns_static_entry(entry_id: str) -> str:
+    """Remove a static DNS entry by its .id."""
+    return json.dumps(_api_remove("/ip/dns/static", entry_id), indent=2)
+
+
+@mcp.tool()
+def enable_dns_static_entry(entry_id: str) -> str:
+    """Enable a disabled static DNS entry."""
+    return json.dumps(
+        _api_set("/ip/dns/static", entry_id, {"disabled": "false"}), indent=2
+    )
+
+
+@mcp.tool()
+def disable_dns_static_entry(entry_id: str) -> str:
+    """Disable a static DNS entry without removing it."""
+    return json.dumps(
+        _api_set("/ip/dns/static", entry_id, {"disabled": "true"}), indent=2
+    )
+
+
+@mcp.tool()
+def flush_dns_cache() -> str:
+    """Flush the DNS cache on the device."""
+    api = _get_api()
+    try:
+        api.path("/ip/dns/cache")("flush")
+    except librouteros.exceptions.TrapError:
+        pass
+    finally:
+        api.close()
+    return json.dumps({"status": "dns cache flushed"})
+
+
+# ---------------------------------------------------------------------------
+# IP Address CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def add_ip_address(address: str, interface: str, comment: Optional[str] = None) -> str:
+    """Add an IP address to an interface (e.g. '192.168.1.1/24' on 'ether1')."""
+    params = _build_params(address=address, interface=interface, comment=comment)
+    return json.dumps(_api_add("/ip/address", params), indent=2)
+
+
+@mcp.tool()
+def update_ip_address(
+    address_id: str,
+    address: Optional[str] = None,
+    interface: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update an IP address entry by its .id."""
+    params = _build_params(address=address, interface=interface, comment=comment)
+    return json.dumps(_api_set("/ip/address", address_id, params), indent=2)
+
+
+@mcp.tool()
+def remove_ip_address(address_id: str) -> str:
+    """Remove an IP address by its .id."""
+    return json.dumps(_api_remove("/ip/address", address_id), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Route CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def add_route(
+    dst_address: str,
+    gateway: str,
+    distance: Optional[int] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Add a static route (e.g. dst '10.0.0.0/8' gateway '192.168.1.1')."""
+    params = _build_params(
+        **{"dst-address": dst_address},
+        gateway=gateway,
+        distance=str(distance) if distance is not None else None,
+        comment=comment,
+    )
+    return json.dumps(_api_add("/ip/route", params), indent=2)
+
+
+@mcp.tool()
+def update_route(
+    route_id: str,
+    gateway: Optional[str] = None,
+    distance: Optional[int] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update a static route by its .id."""
+    params = _build_params(
+        gateway=gateway,
+        distance=str(distance) if distance is not None else None,
+        comment=comment,
+    )
+    return json.dumps(_api_set("/ip/route", route_id, params), indent=2)
+
+
+@mcp.tool()
+def remove_route(route_id: str) -> str:
+    """Remove a static route by its .id."""
+    return json.dumps(_api_remove("/ip/route", route_id), indent=2)
+
+
+@mcp.tool()
+def enable_route(route_id: str) -> str:
+    """Enable a disabled static route."""
+    return json.dumps(_api_set("/ip/route", route_id, {"disabled": "false"}), indent=2)
+
+
+@mcp.tool()
+def disable_route(route_id: str) -> str:
+    """Disable a static route without removing it."""
+    return json.dumps(_api_set("/ip/route", route_id, {"disabled": "true"}), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# VLAN CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def add_vlan(
+    name: str, vlan_id: int, interface: str, comment: Optional[str] = None
+) -> str:
+    """Create a VLAN interface on a parent interface."""
+    params = _build_params(
+        name=name, **{"vlan-id": str(vlan_id)}, interface=interface, comment=comment
+    )
+    return json.dumps(_api_add("/interface/vlan", params), indent=2)
+
+
+@mcp.tool()
+def update_vlan(
+    vlan_item_id: str,
+    name: Optional[str] = None,
+    vlan_id: Optional[int] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update a VLAN interface by its .id."""
+    params = _build_params(name=name, comment=comment)
+    if vlan_id is not None:
+        params["vlan-id"] = str(vlan_id)
+    return json.dumps(_api_set("/interface/vlan", vlan_item_id, params), indent=2)
+
+
+@mcp.tool()
+def remove_vlan(vlan_item_id: str) -> str:
+    """Remove a VLAN interface by its .id."""
+    return json.dumps(_api_remove("/interface/vlan", vlan_item_id), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# DHCP CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_dhcp_networks() -> str:
+    """List DHCP server networks with address, gateway, DNS, and domain."""
+    return json.dumps(_rest_get("/ip/dhcp-server/network"), indent=2)
+
+
+@mcp.tool()
+def add_dhcp_lease(
+    address: str,
+    mac_address: str,
+    server: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Add a static DHCP lease binding a MAC to an IP."""
+    params = _build_params(
+        address=address, **{"mac-address": mac_address}, server=server, comment=comment
+    )
+    return json.dumps(_api_add("/ip/dhcp-server/lease", params), indent=2)
+
+
+@mcp.tool()
+def remove_dhcp_lease(lease_id: str) -> str:
+    """Remove a DHCP lease by its .id."""
+    return json.dumps(_api_remove("/ip/dhcp-server/lease", lease_id), indent=2)
+
+
+@mcp.tool()
+def add_dhcp_network(
+    address: str,
+    gateway: str,
+    dns_server: Optional[str] = None,
+    domain: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Add a DHCP server network definition."""
+    params = _build_params(
+        address=address,
+        gateway=gateway,
+        **{"dns-server": dns_server},
+        domain=domain,
+        comment=comment,
+    )
+    return json.dumps(_api_add("/ip/dhcp-server/network", params), indent=2)
+
+
+@mcp.tool()
+def remove_dhcp_network(network_id: str) -> str:
+    """Remove a DHCP server network by its .id."""
+    return json.dumps(_api_remove("/ip/dhcp-server/network", network_id), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# IP Pool CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def add_ip_pool(name: str, ranges: str, comment: Optional[str] = None) -> str:
+    """Create an IP pool with address ranges (e.g. '192.168.1.100-192.168.1.200')."""
+    params = _build_params(name=name, ranges=ranges, comment=comment)
+    return json.dumps(_api_add("/ip/pool", params), indent=2)
+
+
+@mcp.tool()
+def update_ip_pool(
+    pool_id: str,
+    name: Optional[str] = None,
+    ranges: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update an IP pool by its .id."""
+    params = _build_params(name=name, ranges=ranges, comment=comment)
+    return json.dumps(_api_set("/ip/pool", pool_id, params), indent=2)
+
+
+@mcp.tool()
+def remove_ip_pool(pool_id: str) -> str:
+    """Remove an IP pool by its .id."""
+    return json.dumps(_api_remove("/ip/pool", pool_id), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# User CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def add_user(
+    name: str, group: str, password: str, comment: Optional[str] = None
+) -> str:
+    """Add a user account with group and password."""
+    params = _build_params(name=name, group=group, password=password, comment=comment)
+    return json.dumps(_api_add("/user", params), indent=2)
+
+
+@mcp.tool()
+def update_user(
+    user_id: str,
+    group: Optional[str] = None,
+    password: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update a user account by its .id."""
+    params = _build_params(group=group, password=password, comment=comment)
+    return json.dumps(_api_set("/user", user_id, params), indent=2)
+
+
+@mcp.tool()
+def remove_user(user_id: str) -> str:
+    """Remove a user account by its .id. Cannot remove the admin user."""
+    users = _rest_get("/user")
+    target = [u for u in users if u.get(".id") == user_id]
+    if target and target[0].get("name") == "admin":
+        return json.dumps({"error": "Cannot remove the admin user"})
+    return json.dumps(_api_remove("/user", user_id), indent=2)
+
+
+@mcp.tool()
+def enable_user(user_id: str) -> str:
+    """Enable a disabled user account."""
+    return json.dumps(_api_set("/user", user_id, {"disabled": "false"}), indent=2)
+
+
+@mcp.tool()
+def disable_user(user_id: str) -> str:
+    """Disable a user account without removing it."""
+    return json.dumps(_api_set("/user", user_id, {"disabled": "true"}), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# WireGuard CRUD
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_wireguard_interfaces() -> str:
+    """List WireGuard interfaces with public key, listen port, and status."""
+    try:
+        return json.dumps(_rest_get("/interface/wireguard"), indent=2)
+    except requests.exceptions.HTTPError as exc:
+        if exc.response.status_code == 404:
+            return json.dumps({"error": "WireGuard not available on this device"})
+        raise
+
+
+@mcp.tool()
+def add_wireguard_interface(
+    name: str, listen_port: int, comment: Optional[str] = None
+) -> str:
+    """Create a WireGuard interface with a listen port. Keys auto-generated."""
+    params = _build_params(
+        name=name, **{"listen-port": str(listen_port)}, comment=comment
+    )
+    return json.dumps(_api_add("/interface/wireguard", params), indent=2)
+
+
+@mcp.tool()
+def remove_wireguard_interface(interface_id: str) -> str:
+    """Remove a WireGuard interface by its .id."""
+    return json.dumps(_api_remove("/interface/wireguard", interface_id), indent=2)
+
+
+@mcp.tool()
+def get_wireguard_peers() -> str:
+    """List WireGuard peers with public key, endpoint, allowed addresses."""
+    try:
+        return json.dumps(_rest_get("/interface/wireguard/peers"), indent=2)
+    except requests.exceptions.HTTPError as exc:
+        if exc.response.status_code == 404:
+            return json.dumps({"error": "WireGuard not available on this device"})
+        raise
+
+
+@mcp.tool()
+def add_wireguard_peer(
+    interface: str,
+    public_key: str,
+    allowed_address: str,
+    endpoint_address: Optional[str] = None,
+    endpoint_port: Optional[int] = None,
+    persistent_keepalive: Optional[int] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Add a WireGuard peer to an interface."""
+    params = _build_params(
+        interface=interface,
+        **{"public-key": public_key, "allowed-address": allowed_address},
+        **{"endpoint-address": endpoint_address},
+        **{"endpoint-port": str(endpoint_port) if endpoint_port else None},
+        **{
+            "persistent-keepalive": (
+                str(persistent_keepalive) if persistent_keepalive else None
+            )
+        },
+        comment=comment,
+    )
+    return json.dumps(_api_add("/interface/wireguard/peers", params), indent=2)
+
+
+@mcp.tool()
+def update_wireguard_peer(
+    peer_id: str,
+    allowed_address: Optional[str] = None,
+    endpoint_address: Optional[str] = None,
+    endpoint_port: Optional[int] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update a WireGuard peer by its .id."""
+    params = _build_params(
+        **{"allowed-address": allowed_address, "endpoint-address": endpoint_address},
+        **{"endpoint-port": str(endpoint_port) if endpoint_port else None},
+        comment=comment,
+    )
+    return json.dumps(_api_set("/interface/wireguard/peers", peer_id, params), indent=2)
+
+
+@mcp.tool()
+def remove_wireguard_peer(peer_id: str) -> str:
+    """Remove a WireGuard peer by its .id."""
+    return json.dumps(_api_remove("/interface/wireguard/peers", peer_id), indent=2)
+
+
+@mcp.tool()
+def enable_wireguard_peer(peer_id: str) -> str:
+    """Enable a disabled WireGuard peer."""
+    return json.dumps(
+        _api_set("/interface/wireguard/peers", peer_id, {"disabled": "false"}), indent=2
+    )
+
+
+@mcp.tool()
+def disable_wireguard_peer(peer_id: str) -> str:
+    """Disable a WireGuard peer without removing it."""
+    return json.dumps(
+        _api_set("/interface/wireguard/peers", peer_id, {"disabled": "true"}), indent=2
+    )
+
+
+# ---------------------------------------------------------------------------
+# Backup & System
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def create_backup(name: Optional[str] = None) -> str:
+    """Create a system backup file on the device."""
+    api = _get_api()
+    try:
+        params = {}
+        if name:
+            params["name"] = name
+        api.path("/system/backup")("save", **params)
+        return json.dumps({"status": "backup created", "name": name or "auto"})
+    except librouteros.exceptions.TrapError as exc:
+        return json.dumps({"error": str(exc)})
+    finally:
+        api.close()
+
+
+@mcp.tool()
+def get_files(name_filter: Optional[str] = None) -> str:
+    """List files on the device. Optionally filter by name substring."""
+    result = _rest_get("/file")
+    if name_filter:
+        result = [f for f in result if name_filter.lower() in f.get("name", "").lower()]
     return json.dumps(result, indent=2)
 
 
