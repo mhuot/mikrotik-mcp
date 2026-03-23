@@ -1209,7 +1209,7 @@ def add_dns_forwarder(
     }
     if comment:
         data["comment"] = comment
-    return json.dumps(_rest_post("/ip/dns/static", data), indent=2)
+    return json.dumps(_rest_put("/ip/dns/static", data), indent=2)
 
 
 @mcp.tool()
