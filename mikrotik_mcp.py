@@ -1750,5 +1750,146 @@ def add_ipsec_policy(
     return json.dumps(_api_add("/ip/ipsec/policy", params), indent=2)
 
 
+# ---------------------------------------------------------------------------
+# IPsec Policy Control
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def update_ipsec_policy(
+    policy_id: str,
+    src_address: Optional[str] = None,
+    dst_address: Optional[str] = None,
+    proposal: Optional[str] = None,
+    disabled: Optional[bool] = None,
+) -> str:
+    """Update an existing IPsec policy by its .id. Provide only fields to change."""
+    data: dict = {}
+    if src_address is not None:
+        data["src-address"] = src_address
+    if dst_address is not None:
+        data["dst-address"] = dst_address
+    if proposal is not None:
+        data["proposal"] = proposal
+    if disabled is not None:
+        data["disabled"] = str(disabled).lower()
+    return json.dumps(_rest_patch("/ip/ipsec/policy", policy_id, data), indent=2)
+
+
+@mcp.tool()
+def enable_ipsec_policy(policy_id: str) -> str:
+    """Enable a disabled IPsec policy by its .id."""
+    try:
+        result = _rest_post(f"/ip/ipsec/policy/{policy_id}/enable", {})
+        return json.dumps(result, indent=2)
+    except ValueError:
+        return json.dumps({"status": "enabled"})
+
+
+@mcp.tool()
+def disable_ipsec_policy(policy_id: str) -> str:
+    """Disable an IPsec policy by its .id without removing it."""
+    try:
+        result = _rest_post(f"/ip/ipsec/policy/{policy_id}/disable", {})
+        return json.dumps(result, indent=2)
+    except ValueError:
+        return json.dumps({"status": "disabled"})
+
+
+@mcp.tool()
+def flush_ipsec_sa() -> str:
+    """Flush all installed IPsec SAs, forcing renegotiation of all tunnels."""
+    try:
+        result = _rest_post("/ip/ipsec/installed-sa/flush", {})
+        return json.dumps(result, indent=2)
+    except ValueError:
+        return json.dumps({"status": "flushed"})
+
+
+# ---------------------------------------------------------------------------
+# Bridge Management
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def update_bridge_port(
+    port_id: str,
+    restricted_tcn: Optional[bool] = None,
+    horizon: Optional[int] = None,
+    priority: Optional[int] = None,
+    path_cost: Optional[int] = None,
+    edge: Optional[str] = None,
+) -> str:
+    """Update properties of a bridge port by its .id (STP tuning, edge, horizon, etc.)."""
+    data: dict = {}
+    if restricted_tcn is not None:
+        data["restricted-tcn"] = str(restricted_tcn).lower()
+    if horizon is not None:
+        data["horizon"] = str(horizon)
+    if priority is not None:
+        data["priority"] = str(priority)
+    if path_cost is not None:
+        data["path-cost"] = str(path_cost)
+    if edge is not None:
+        data["edge"] = edge
+    return json.dumps(_rest_patch("/interface/bridge/port", port_id, data), indent=2)
+
+
+@mcp.tool()
+def update_bridge_settings(
+    bridge_id: str,
+    priority: Optional[int] = None,
+    protocol_mode: Optional[str] = None,
+    stp: Optional[bool] = None,
+) -> str:
+    """Update global bridge settings by bridge .id (STP mode, priority, etc.).
+    protocol_mode: 'none', 'rstp', or 'mstp'."""
+    data: dict = {}
+    if priority is not None:
+        data["priority"] = str(priority)
+    if protocol_mode is not None:
+        data["protocol-mode"] = protocol_mode
+    if stp is not None:
+        data["stp"] = str(stp).lower()
+    return json.dumps(_rest_patch("/interface/bridge", bridge_id, data), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# IP Service Management
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def update_ip_service(
+    service_id: str,
+    disabled: Optional[bool] = None,
+    port: Optional[int] = None,
+) -> str:
+    """Enable/disable or change the port for a RouterOS IP service by its .id.
+    Use get_ip_services to retrieve service IDs (ssh, http, api, winbox, etc.)."""
+    data: dict = {}
+    if disabled is not None:
+        data["disabled"] = str(disabled).lower()
+    if port is not None:
+        data["port"] = str(port)
+    return json.dumps(_rest_patch("/ip/service", service_id, data), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Interface Traffic Monitoring
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_interface_traffic(interface_name: str = "all") -> str:
+    """Get current tx/rx rates for interfaces using monitor-traffic.
+    Pass a specific interface name or 'all' for all interfaces."""
+    result = _rest_post(
+        "/interface/monitor-traffic",
+        {"interface": interface_name, "once": ""},
+    )
+    return json.dumps(result, indent=2)
+
+
 if __name__ == "__main__":
     mcp.run()
