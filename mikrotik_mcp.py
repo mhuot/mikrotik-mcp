@@ -1155,12 +1155,20 @@ def remove_firewall_address_list_entry(entry_id: str) -> str:
 
 
 @mcp.tool()
-def set_dns_servers(servers: str) -> str:
-    """Set DNS server addresses (comma-separated, e.g. '8.8.8.8,8.8.4.4')."""
+def set_dns_servers(
+    servers: str,
+    allow_remote_requests: Optional[bool] = None,
+) -> str:
+    """Set upstream DNS server IPs (comma-separated, e.g. '8.8.8.8,8.8.4.4').
+    Optionally set allow-remote-requests (True/False) to control whether the
+    router acts as a DNS resolver for LAN clients."""
     api = _get_api()
     try:
         dns = api.path("/ip/dns")
-        dns.update(servers=servers)
+        kwargs: dict = {"servers": servers}
+        if allow_remote_requests is not None:
+            kwargs["allow-remote-requests"] = str(allow_remote_requests).lower()
+        dns.update(**kwargs)
         for item in dns:
             return json.dumps(dict(item), indent=2)
         return json.dumps({"status": "dns servers updated"})
