@@ -1625,5 +1625,95 @@ def get_files(name_filter: Optional[str] = None) -> str:
     return json.dumps(result, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# IPsec Writes
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def update_ipsec_peer(
+    peer_id: str,
+    address: Optional[str] = None,
+    local_address: Optional[str] = None,
+    profile: Optional[str] = None,
+    exchange_mode: Optional[str] = None,
+    send_initial_contact: Optional[bool] = None,
+    disabled: Optional[bool] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update an IPsec peer by its .id. Provide only fields to change."""
+    params = _build_params(
+        address=address,
+        **{"local-address": local_address},
+        profile=profile,
+        **{"exchange-mode": exchange_mode},
+        **{
+            "send-initial-contact": (
+                str(send_initial_contact).lower() if send_initial_contact is not None else None
+            )
+        },
+        **{"disabled": str(disabled).lower() if disabled is not None else None},
+        comment=comment,
+    )
+    return json.dumps(_api_set("/ip/ipsec/peer", peer_id, params), indent=2)
+
+
+@mcp.tool()
+def update_ipsec_identity(
+    identity_id: str,
+    peer: Optional[str] = None,
+    auth_method: Optional[str] = None,
+    secret: Optional[str] = None,
+    certificate: Optional[str] = None,
+    remote_certificate: Optional[str] = None,
+    policy_template_group: Optional[str] = None,
+    generate_policy: Optional[str] = None,
+    disabled: Optional[bool] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Update an IPsec identity by its .id. Provide only fields to change."""
+    params = _build_params(
+        peer=peer,
+        **{"auth-method": auth_method},
+        secret=secret,
+        certificate=certificate,
+        **{"remote-certificate": remote_certificate},
+        **{"policy-template-group": policy_template_group},
+        **{"generate-policy": generate_policy},
+        **{"disabled": str(disabled).lower() if disabled is not None else None},
+        comment=comment,
+    )
+    return json.dumps(_api_set("/ip/ipsec/identity", identity_id, params), indent=2)
+
+
+@mcp.tool()
+def add_ipsec_policy(
+    src_address: str,
+    dst_address: str,
+    peer: Optional[str] = None,
+    tunnel: Optional[bool] = None,
+    action: Optional[str] = None,
+    proposal: Optional[str] = None,
+    sa_src_address: Optional[str] = None,
+    sa_dst_address: Optional[str] = None,
+    protocol: Optional[str] = None,
+    disabled: Optional[bool] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """Add an IPsec policy (traffic selector). src_address and dst_address are required."""
+    params = _build_params(
+        **{"src-address": src_address, "dst-address": dst_address},
+        peer=peer,
+        **{"tunnel": str(tunnel).lower() if tunnel is not None else None},
+        action=action,
+        proposal=proposal,
+        **{"sa-src-address": sa_src_address, "sa-dst-address": sa_dst_address},
+        protocol=protocol,
+        **{"disabled": str(disabled).lower() if disabled is not None else None},
+        comment=comment,
+    )
+    return json.dumps(_api_add("/ip/ipsec/policy", params), indent=2)
+
+
 if __name__ == "__main__":
     mcp.run()
