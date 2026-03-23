@@ -65,12 +65,12 @@ def _rest_get(path: str, params: Optional[dict] = None) -> dict:
     return resp.json()
 
 
-def _rest_post(path: str, data: Optional[dict] = None) -> dict:
+def _rest_post(path: str, data: Optional[dict] = None, timeout: int = 30) -> dict:
     """Make a POST request to the RouterOS REST API (commands like ping, traceroute)."""
     base_url, user, password, verify_ssl = _get_connection_params()
     url = f"{base_url}{path}"
     resp = requests.post(
-        url, auth=(user, password), verify=verify_ssl, json=data, timeout=30
+        url, auth=(user, password), verify=verify_ssl, json=data, timeout=timeout
     )
     resp.raise_for_status()
     return resp.json()
@@ -854,7 +854,7 @@ def get_routing_filters() -> str:
 def run_traceroute(address: str) -> str:
     """Run traceroute to a target address."""
     try:
-        result = _rest_post("/tool/traceroute", {"address": address})
+        result = _rest_post("/tool/traceroute", {"address": address}, timeout=90)
         return json.dumps(result, indent=2)
     except requests.exceptions.HTTPError:
         return json.dumps(
@@ -1886,7 +1886,7 @@ def get_interface_traffic(interface_name: str = "all") -> str:
     Pass a specific interface name or 'all' for all interfaces."""
     result = _rest_post(
         "/interface/monitor-traffic",
-        {"interface": interface_name, "once": ""},
+        {"interface": interface_name, "once": "true"},
     )
     return json.dumps(result, indent=2)
 
