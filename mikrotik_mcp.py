@@ -1779,21 +1779,13 @@ def update_ipsec_policy(
 @mcp.tool()
 def enable_ipsec_policy(policy_id: str) -> str:
     """Enable a disabled IPsec policy by its .id."""
-    try:
-        result = _rest_post(f"/ip/ipsec/policy/{policy_id}/enable", {})
-        return json.dumps(result, indent=2)
-    except ValueError:
-        return json.dumps({"status": "enabled"})
+    return json.dumps(_rest_patch("/ip/ipsec/policy", policy_id, {"disabled": "false"}), indent=2)
 
 
 @mcp.tool()
 def disable_ipsec_policy(policy_id: str) -> str:
     """Disable an IPsec policy by its .id without removing it."""
-    try:
-        result = _rest_post(f"/ip/ipsec/policy/{policy_id}/disable", {})
-        return json.dumps(result, indent=2)
-    except ValueError:
-        return json.dumps({"status": "disabled"})
+    return json.dumps(_rest_patch("/ip/ipsec/policy", policy_id, {"disabled": "true"}), indent=2)
 
 
 @mcp.tool()
