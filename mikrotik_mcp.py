@@ -1192,6 +1192,27 @@ def add_dns_static_entry(
 
 
 @mcp.tool()
+def add_dns_forwarder(
+    name: str,
+    forward_to: str,
+    match_subdomain: bool = True,
+    comment: Optional[str] = None,
+) -> str:
+    """Add a DNS FWD (forwarder) entry for conditional zone forwarding.
+    Routes DNS queries for a domain zone to a specific upstream resolver.
+    Example: forward privatelink.vaultcore.azure.net to 10.0.4.4."""
+    data: dict = {
+        "name": name,
+        "type": "FWD",
+        "forward-to": forward_to,
+        "match-subdomain": "yes" if match_subdomain else "no",
+    }
+    if comment:
+        data["comment"] = comment
+    return json.dumps(_rest_post("/ip/dns/static", data), indent=2)
+
+
+@mcp.tool()
 def update_dns_static_entry(
     entry_id: str,
     name: Optional[str] = None,
