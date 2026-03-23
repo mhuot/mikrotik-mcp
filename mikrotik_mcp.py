@@ -1687,6 +1687,12 @@ def update_ipsec_identity(
 
 
 @mcp.tool()
+def remove_ipsec_policy(policy_id: str) -> str:
+    """Remove an IPsec policy by its .id."""
+    return json.dumps(_api_remove("/ip/ipsec/policy", policy_id), indent=2)
+
+
+@mcp.tool()
 def add_ipsec_policy(
     src_address: str,
     dst_address: str,
